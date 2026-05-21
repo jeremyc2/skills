@@ -12,7 +12,7 @@ rm -rf .cursor
 bun add -D @typescript/native-preview@latest @biomejs/biome@latest @effect/tsgo@latest
 bun add effect@beta
 bunx --bun @biomejs/biome init
-git submodule add effect-smol reference-repos/effect-smol
+git submodule add https://github.com/Effect-TS/effect-smol.git reference_repositories/effect-smol
 ```
 
 Update the `package.json` with a good description.
