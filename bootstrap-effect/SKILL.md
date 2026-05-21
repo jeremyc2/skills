@@ -97,15 +97,15 @@ Add `.vscode/settings.json` with the following contents:
 	"files.watcherExclude": {
 		"reference_repositories/**": true
 	},
-	"js/ts.enablePromptUseWorkspaceTsdk": true,
-	"js/ts.experimental.useTsgo": true,
-	"js/ts.native-preview.tsdk": "node_modules/@typescript/native-preview",
-	"js/ts.suggest.autoImports": true,
-	"js/ts.updateImportsOnFileMove.enabled": "always",
+	"typescript.enablePromptUseWorkspaceTsdk": true,
 	"json.schemaDownload.enable": true,
 	"search.exclude": {
 		"reference_repositories/**": true
-	}
+	},
+	"typescript.experimental.useTsgo": true,
+	"typescript.native-preview.tsdk": "node_modules/@typescript/native-preview",
+	"typescript.suggest.autoImports": true,
+	"typescript.updateImportsOnFileMove.enabled": "always"
 }
 ```
 
