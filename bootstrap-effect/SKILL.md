@@ -97,6 +97,10 @@ Add `.vscode/settings.json` with the following contents:
 	"files.watcherExclude": {
 		"reference_repositories/**": true
 	},
+	"js/ts.tsdk.promptToUseWorkspaceVersion": true,
+	"js/ts.experimental.useTsgo": true,
+	"js/ts.suggest.autoImports": true,
+	"js/ts.updateImportsOnFileMove.enabled": "always",
 	"json.schemaDownload.enable": true,
 	"search.exclude": {
 		"reference_repositories/**": true
