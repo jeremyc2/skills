@@ -73,7 +73,7 @@ Add an `AGENTS.md` file with the following contents:
 
 ```md
 - Add a comment above each non-trivial regex breaking it down.
-- Keep `UBIQUITOUS_LANGUAGE.md` up-to-date. Collapse synonyms, flag ambiguous language and overloaded terminology.   
+- Keep `UBIQUITOUS_LANGUAGE.md` up-to-date. Collapse synonyms, flag ambiguous language and overloaded terminology. NEVER update the file without running it by the user first (e.g. "Can I add term x, y, z to `UBIQUITOUS_LANGUAGE.md`?", "I've noticed ..., should we tighten up the language around ...?", etc.).
 - You and the user should police eachother (e.g. "Did you mean ...?") when conversations, documentation, and code no longer reflect a shared vocab.
 - Reference the git submodules in `reference_repositories` for best practices, usage examples, and documentation for the frameworks and packages we use.
 - Track Architecture Decisions in `ADR/{FEATURE}/*` (e.g. `/ARD/cli/0001-authentication.md`) with sections for `Problem`, `Considered Options`, and  `Decision Outcome`.
