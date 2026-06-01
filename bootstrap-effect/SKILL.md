@@ -3,19 +3,18 @@ name: Bootstrap Effect
 description: Setup Effect v4 in a new project.
 ---
 
-Check if Bun has already been setup in the repo and if not run `bun init`.
+Check if Bun has already been setup in the repo and if not run `bun init -y -m`.
 
 Run the following in a single command:
 
 ```bash
-rm -rf .cursor
 bun add -D @typescript/native-preview@latest @biomejs/biome@latest @effect/tsgo@latest
 bun add effect@beta
 bunx --bun @biomejs/biome init
 git submodule add https://github.com/Effect-TS/effect-smol.git reference_repositories/effect-smol
 ```
 
-Update the `package.json` with a good description.
+Update the `package.json` with a good name and description.
 
 Add the following scripts to the `package.json`:
 
@@ -113,4 +112,4 @@ Add `.vscode/settings.json` with the following contents:
 }
 ```
 
-Encourage the user to run `bun effect-tsgo setup`.
+Encourage the user to run `bun effect-tsgo setup`. Do not run this yourself.
