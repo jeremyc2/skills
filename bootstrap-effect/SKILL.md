@@ -75,7 +75,7 @@ Under compiler `compilerOptions.plugins[]` add the output from this command:
 curl https://raw.githubusercontent.com/Effect-TS/tsgo/refs/heads/main/schema.json | jq '{ "name": "@effect/language-service", "diagnosticSeverity": (.definitions.effectLanguageServicePluginDiagnosticSeverityDefinition.properties | map_values("error")) }'
 ```
 
-Add `"exclude": ["reference_repositories/**/*"],` to the `tsconfig.json`.
+Add `"exclude": ["reference_repositories/**/*"],` and `"$schema": "https://raw.githubusercontent.com/Effect-TS/tsgo/refs/heads/main/schema.json"` to the `tsconfig.json`.
 
 If the repo is otherwise empty, add a minimal `index.ts` so `tsgo` does not fail with `TS18003: No inputs were found`:
 
