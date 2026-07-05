@@ -1,5 +1,5 @@
 ---
-name: Bootstrap Effect
+name: bootstrap-effect
 description: Setup Effect v4 in a new project.
 ---
 
@@ -12,6 +12,7 @@ bun add -D @typescript/native-preview@latest @biomejs/biome@latest @effect/tsgo@
 bun add effect@beta
 bunx --bun @biomejs/biome init
 git submodule add https://github.com/Effect-TS/effect-smol.git reference_repositories/effect-smol
+git submodule add https://github.com/mattpocock/skills.git reference_repositories/mattpocock-skills
 ```
 
 Update the `package.json` with a good name and description.
@@ -37,7 +38,7 @@ Create a `bunfig.toml` with the following contents:
 pathIgnorePatterns = ["reference_repositories/**"]
 ```
 
-Make sure these compiler options are set in the `tsconfig.json`:
+Make sure these `compilerOptions` are set in the `tsconfig.json`:
 
 ```json
     // Best practices
@@ -55,28 +56,19 @@ Make sure these compiler options are set in the `tsconfig.json`:
     "noPropertyAccessFromIndexSignature": true,
 ```
 
-Add `"exclude": ["reference_repositories/**/*"],` to the `tsconfig.json`.
+Under compiler `compilerOptions.plugins[]` add the output from this command:
 
-Create an `UBIQUITOUS_LANGUAGE.md` file at the repository root with the following contents:
-
-```md
-## Terms
-
-## Relationships
-
-## Flagged ambiguities
-
+```bash
+curl https://raw.githubusercontent.com/Effect-TS/tsgo/refs/heads/main/schema.json | jq '{ "name": "@effect/language-service", "diagnosticSeverity": (.definitions.effectLanguageServicePluginDiagnosticSeverityDefinition.properties | map_values("error")) }'
 ```
+
+Add `"exclude": ["reference_repositories/**/*"],` to the `tsconfig.json`.
 
 Add an `AGENTS.md` file with the following contents:
 
 ```md
-- Add a comment above each non-trivial regex breaking it down.
-- Keep `UBIQUITOUS_LANGUAGE.md` up-to-date. Collapse synonyms, flag ambiguous language and overloaded terminology. NEVER update the file without running it by the user first (e.g. "Can I add term x, y, z to `UBIQUITOUS_LANGUAGE.md`?", "I've noticed ..., should we tighten up the language around ...?", etc.).
-- You and the user should police eachother (e.g. "Did you mean ...?") when conversations, documentation, and code no longer reflect a shared vocab.
+- Avoid using regex where possible. Add a comment above each non-trivial regex breaking it down.
 - Reference the git submodules in `reference_repositories` for best practices, usage examples, and documentation for the frameworks and packages we use.
-- Track Architecture Decisions using the local [ADR format](.agents/skills/grill-with-docs/ADR-FORMAT.md).
-- Tracked work lives as markdown under `issues/` (not GitHub Issues). See `issues/README.md` and `.agents/skills/issue-tracker.md`.
 ```
 
 Add `.vscode/settings.json` with the following contents:
@@ -111,5 +103,3 @@ Add `.vscode/settings.json` with the following contents:
 	"typescript.updateImportsOnFileMove.enabled": "always"
 }
 ```
-
-Encourage the user to run `bun effect-tsgo setup`. Do not run this yourself.
