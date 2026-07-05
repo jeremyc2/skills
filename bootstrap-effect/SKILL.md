@@ -88,6 +88,7 @@ Add an `AGENTS.md` file with the following contents:
 ```md
 - Avoid using regex where possible. Add a comment above each non-trivial regex breaking it down.
 - Reference the git submodules in `reference_repositories` for best practices, usage examples, and documentation for the frameworks and packages we use.
+- NEVER loosen `diagnosticSeverity` rules in `tsconfig.json`.
 ```
 
 Add `.vscode/settings.json` with the following contents:
