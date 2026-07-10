@@ -79,10 +79,14 @@ async function configureBunTestExclusions() {
   await Bun.write(path, lines.join("\n"));
 }
 
-// 🟠 Write the expected Biome configuration shape.
+// 🟠 🔴 Initialize and extend the Biome configuration.
 async function configureBiome() {
   const biomeJson = join(root, "biome.json");
   const biomeJsonc = join(root, "biome.jsonc");
+  if (!existsSync(biomeJson) && !existsSync(biomeJsonc)) {
+    // 🔴 Generate Biome's default configuration.
+    await $`bun biome init`.quiet();
+  }
   if (existsSync(biomeJson) && existsSync(biomeJsonc)) fail("Keep only one of biome.json and biome.jsonc");
   const path = existsSync(biomeJsonc) ? biomeJsonc : biomeJson;
   const biomeConfig = existsSync(path) ? await readJsonObject(path) : {};
