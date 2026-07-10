@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create Bootstrap Skill"
+  short_description: "Create slim Bun-powered bootstrap skills"
+  default_prompt: "Use $create-bootstrap-skill to create a slim skill backed by a Bun JavaScript bootstrap script."
