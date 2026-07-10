@@ -167,7 +167,24 @@ const tsconfigPath = join(root, "tsconfig.json");
 const tsconfig = existsSync(tsconfigPath) ? await readJsonObject(tsconfigPath) : {};
 tsconfig.$schema = effectTsgoSchemaUrl;
 const compilerOptions = ensureObject(tsconfig, "compilerOptions");
-Object.assign(compilerOptions, {
+if (compilerOptions.plugins !== undefined && !Array.isArray(compilerOptions.plugins)) fail("tsconfig compilerOptions.plugins must be an array");
+const compilerPlugins = [...(compilerOptions.plugins ?? [])];
+const effectPluginIndex = compilerPlugins.findIndex((plugin) => plugin?.name === effectPlugin.name);
+effectPluginIndex < 0 ? compilerPlugins.push(effectPlugin) : (compilerPlugins[effectPluginIndex] = effectPlugin);
+for (const optionName of [
+  "strict",
+  "skipLibCheck",
+  "noFallthroughCasesInSwitch",
+  "noUncheckedIndexedAccess",
+  "noImplicitOverride",
+  "erasableSyntaxOnly",
+  "noUnusedLocals",
+  "noUnusedParameters",
+  "noPropertyAccessFromIndexSignature",
+  "plugins",
+]) delete compilerOptions[optionName];
+tsconfig.compilerOptions = {
+  ...compilerOptions,
   strict: true,
   skipLibCheck: true,
   noFallthroughCasesInSwitch: true,
@@ -177,12 +194,8 @@ Object.assign(compilerOptions, {
   noUnusedLocals: true,
   noUnusedParameters: true,
   noPropertyAccessFromIndexSignature: true,
-});
-if (compilerOptions.plugins !== undefined && !Array.isArray(compilerOptions.plugins)) fail("tsconfig compilerOptions.plugins must be an array");
-const compilerPlugins = [...(compilerOptions.plugins ?? [])];
-const effectPluginIndex = compilerPlugins.findIndex((plugin) => plugin?.name === effectPlugin.name);
-effectPluginIndex < 0 ? compilerPlugins.push(effectPlugin) : (compilerPlugins[effectPluginIndex] = effectPlugin);
-compilerOptions.plugins = compilerPlugins;
+  plugins: compilerPlugins,
+};
 if (tsconfig.exclude === undefined) tsconfig.exclude = [`${referenceRepositoriesDirectory}/**/*`];
 else if (!Array.isArray(tsconfig.exclude)) fail("tsconfig exclude must be an array");
 else if (!tsconfig.exclude.includes(`${referenceRepositoriesDirectory}/**/*`)) tsconfig.exclude.push(`${referenceRepositoriesDirectory}/**/*`);
