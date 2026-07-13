@@ -1,13 +1,20 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { basename, join } from "node:path";
 
+/* Constants */
+
 const root = process.cwd();
 const referenceRepositoriesDirectory = "reference_repositories";
 const effectTsgoSchemaUrl = "https://raw.githubusercontent.com/Effect-TS/tsgo/refs/heads/main/schema.json";
 const installedBiomeSchemaPath = join(root, "node_modules/@biomejs/biome/configuration_schema.json");
+
+/* Runtime utilities */
+
 const $ = Bun.$.cwd(root).env(process.env);
 // Throw a project-configuration error.
 const fail = (message) => { throw new Error(message); };
+
+/* JSONC and object utilities */
 
 // Read and require a JSON object from a JSON or JSONC file.
 async function readJsonObject(path) {
@@ -22,9 +29,86 @@ function writeJson(path, value) {
   return Bun.write(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+// Skip JSONC whitespace and comments.
+function skipJsoncTrivia(text, start) {
+  let index = start;
+  while (index < text.length) {
+    if (/\s/.test(text[index])) { index++; continue; }
+    if (text.startsWith("//", index)) { const newline = text.indexOf("\n", index + 2); index = newline < 0 ? text.length : newline + 1; continue; }
+    if (text.startsWith("/*", index)) { const end = text.indexOf("*/", index + 2); if (end < 0) fail("Unterminated JSONC comment"); index = end + 2; continue; }
+    break;
+  }
+  return index;
+}
+
+// Find the end of one JSONC value without disturbing its original text.
+function jsoncValueEnd(text, start) {
+  let index = skipJsoncTrivia(text, start);
+  if (text[index] === '"') {
+    for (index++; index < text.length; index++) { if (text[index] === "\\") index++; else if (text[index] === '"') return index + 1; }
+    return fail("Unterminated JSONC string");
+  }
+  if (text[index] === "{" || text[index] === "[") {
+    const opening = text[index]; const closing = opening === "{" ? "}" : "]"; let depth = 0;
+    for (; index < text.length; index++) {
+      if (text[index] === '"') { index = jsoncValueEnd(text, index) - 1; continue; }
+      if (text.startsWith("//", index) || text.startsWith("/*", index)) { index = skipJsoncTrivia(text, index) - 1; continue; }
+      if (text[index] === opening) depth++; else if (text[index] === closing && --depth === 0) return index + 1;
+    }
+    return fail(`Unterminated JSONC ${opening}`);
+  }
+  while (index < text.length && ![",", "}", "]"].includes(text[index])) index++;
+  return index;
+}
+
+// Read the direct properties and source ranges of a JSONC object.
+function jsoncObjectProperties(text, objectStart = skipJsoncTrivia(text, 0)) {
+  if (text[objectStart] !== "{") fail("Expected a JSONC object");
+  const properties = []; let index = objectStart + 1;
+  while (index < text.length) {
+    index = skipJsoncTrivia(text, index);
+    if (text[index] === "}") return { properties, end: index };
+    const keyStart = index; const keyEnd = jsoncValueEnd(text, keyStart); const key = Bun.JSONC.parse(text.slice(keyStart, keyEnd));
+    index = skipJsoncTrivia(text, keyEnd); if (text[index] !== ":") fail(`Expected a colon after ${key}`);
+    const valueStart = skipJsoncTrivia(text, index + 1); const valueEnd = jsoncValueEnd(text, valueStart);
+    properties.push({ key, keyStart, valueStart, valueEnd }); index = skipJsoncTrivia(text, valueEnd);
+    if (text[index] === ",") index++; else if (text[index] !== "}") fail(`Expected a comma after ${key}`);
+  }
+  return fail("Unterminated JSONC object");
+}
+
+// Replace or append one object property while preserving all unrelated JSONC text.
+function upsertJsoncProperty(text, objectStart, key, value) {
+  const object = jsoncObjectProperties(text, objectStart);
+  const existing = object.properties.find((property) => property.key === key);
+  const rendered = typeof value === "string" ? JSON.stringify(value) : JSON.stringify(value, null, 2);
+  if (existing) {
+    const indent = text.slice(text.lastIndexOf("\n", existing.keyStart) + 1, existing.keyStart);
+    return text.slice(0, existing.valueStart) + rendered.replaceAll("\n", `\n${indent}`) + text.slice(existing.valueEnd);
+  }
+  const closingLineStart = text.lastIndexOf("\n", object.end - 1) + 1;
+  const closingIndent = text.slice(closingLineStart, object.end).match(/^\s*/)[0];
+  const propertyIndent = object.properties.length ? text.slice(text.lastIndexOf("\n", object.properties[0].keyStart) + 1, object.properties[0].keyStart) : `${closingIndent}  `;
+  const needsComma = object.properties.length > 0 && text[skipJsoncTrivia(text, object.properties.at(-1).valueEnd)] !== ",";
+  return `${text.slice(0, object.end)}${needsComma ? "," : ""}\n${propertyIndent}${JSON.stringify(key)}: ${rendered.replaceAll("\n", `\n${propertyIndent}`)}\n${closingIndent}${text.slice(object.end)}`;
+}
+
+// Apply several JSONC object-property edits while preserving unrelated text.
+function editJsoncProperties(text, { path = [], entries }) {
+  let objectStart = skipJsoncTrivia(text, 0);
+  for (const key of path) {
+    const property = jsoncObjectProperties(text, objectStart).properties.find((candidate) => candidate.key === key);
+    if (!property) fail(`Expected JSONC object property ${key}`);
+    objectStart = property.valueStart;
+  }
+  for (const [key, value] of entries) text = upsertJsoncProperty(text, objectStart, key, value);
+  return text;
+}
+
 // Ensure a nested configuration value is an object.
 function ensureObject(parent, key) {
-  const value = parent[key] ?? (parent[key] = {});
+  if (parent[key] === undefined) parent[key] = {};
+  const value = parent[key];
   return value && typeof value === "object" && !Array.isArray(value)
     ? value
     : fail(`${key} must be an object`);
@@ -51,6 +135,8 @@ function mergeObjects(target, source) {
   return target;
 }
 
+/* Configuration helpers */
+
 // 🟠 Configure Bun test discovery without replacing unrelated settings.
 async function configureBunTestExclusions() {
   const path = join(root, "bunfig.toml");
@@ -74,7 +160,8 @@ async function configureBunTestExclusions() {
   const ignorePatternsLine = lines.findIndex((line, index) => index > testTableLine && (nextTableLine < 0 || index < nextTableLine) && line.trim().startsWith("pathIgnorePatterns"));
   if (ignorePatternsLine >= 0 && !lines[ignorePatternsLine].includes("]")) fail("Multiline bunfig test.pathIgnorePatterns is not supported");
   const rendered = `pathIgnorePatterns = ${JSON.stringify([...(ignoredTestPaths ?? []), referenceRepositoryGlob])}`;
-  ignorePatternsLine < 0 ? lines.splice(testTableLine + 1, 0, rendered) : (lines[ignorePatternsLine] = rendered);
+  if (ignorePatternsLine < 0) lines.splice(testTableLine + 1, 0, rendered);
+  else lines[ignorePatternsLine] = rendered;
   // 🟠 Update bunfig.toml with the merged test exclusions.
   await Bun.write(path, lines.join("\n"));
 }
@@ -118,10 +205,16 @@ async function ensureSubmodule(url, path) {
   await $`git submodule add ${url} ${path}`.quiet();
 }
 
-if (!existsSync(join(root, "package.json"))) {
+/* Project initialization and dependencies */
+
+const packagePath = join(root, "package.json");
+const createdPackage = !existsSync(packagePath);
+if (createdPackage) {
   // 🔴 Initialize the Bun project.
   await $`bun init -y -m`.quiet();
 }
+const originalPackageText = await Bun.file(packagePath).text();
+const originalPackageJson = await readJsonObject(packagePath);
 // 🔴 Check whether the current directory is already inside a Git repository.
 const gitRepositoryProbe = await $`git rev-parse --is-inside-work-tree`.quiet().nothrow();
 if (gitRepositoryProbe.exitCode !== 0) {
@@ -134,11 +227,8 @@ await $`bun add --ignore-scripts -D typescript@latest @biomejs/biome@latest @eff
 await $`bun add --ignore-scripts effect@beta`.quiet();
 
 // Configure package metadata and scripts.
-const packagePath = join(root, "package.json");
 const packageJson = await readJsonObject(packagePath);
-packageJson.name ||= basename(root).toLowerCase().replaceAll(" ", "-");
-packageJson.description ||= "An Effect v4 project.";
-packageJson.scripts = {
+const packageScripts = {
   ...ensureObject(packageJson, "scripts"),
   typecheck: "tsc",
   check: "bun --bun biome check --write",
@@ -146,8 +236,31 @@ packageJson.scripts = {
   prepare: "effect-tsgo patch",
   "chore:update": "bun update --latest && bun add effect@beta",
 };
-// 🟠 Write package metadata and project scripts to package.json.
-await writeJson(packagePath, packageJson);
+const packageEntries = [
+  ["name", packageJson.name || basename(root).toLowerCase().replaceAll(" ", "-")],
+  ["description", packageJson.description || "An Effect v4 project."],
+  ["scripts", packageScripts],
+  ["dependencies", packageJson.dependencies],
+  ["devDependencies", packageJson.devDependencies],
+].filter(([, value]) => value !== undefined);
+let packageText;
+if (createdPackage) packageText = `${JSON.stringify(Object.fromEntries(packageEntries), null, 2)}\n`;
+else {
+  packageText = originalPackageText;
+  for (const dependencyKind of ["dependencies", "devDependencies"]) {
+    if (!packageJson[dependencyKind] || !originalPackageJson[dependencyKind]) continue;
+    packageText = editJsoncProperties(packageText, { path: [dependencyKind], entries: Object.entries(packageJson[dependencyKind]) });
+  }
+  if (originalPackageJson.scripts) {
+    packageText = editJsoncProperties(packageText, { path: ["scripts"], entries: Object.entries(packageScripts) });
+  }
+  packageText = editJsoncProperties(packageText, { entries: packageEntries.filter(([key]) => originalPackageJson[key] === undefined) });
+}
+// 🟠 Write only managed package metadata and scripts, retaining Bun's field order.
+await Bun.write(packagePath, packageText);
+
+/* Repository and tool configuration */
+
 // 🟠 Add required ignore patterns to .gitignore.
 await ensureLines(join(root, ".gitignore"), ["node_modules", ".env", ".env.*", ".DS_Store"]);
 const biomeConfigPath = await configureBiome();
@@ -166,34 +279,18 @@ const effectPlugin = {
   diagnosticSeverity: Object.fromEntries(Object.keys(severityProperties).map((name) => [name, "error"])),
 };
 
+/* TypeScript configuration */
+
 // Configure strict compiler options and the Effect language-service plugin.
 const tsconfigPath = join(root, "tsconfig.json");
 const tsconfig = existsSync(tsconfigPath) ? await readJsonObject(tsconfigPath) : {};
-tsconfig.$schema = effectTsgoSchemaUrl;
 const compilerOptions = ensureObject(tsconfig, "compilerOptions");
 if (compilerOptions.plugins !== undefined && !Array.isArray(compilerOptions.plugins)) fail("tsconfig compilerOptions.plugins must be an array");
 const compilerPlugins = [...(compilerOptions.plugins ?? [])];
 const effectPluginIndex = compilerPlugins.findIndex((plugin) => plugin?.name === effectPlugin.name);
-effectPluginIndex < 0 ? compilerPlugins.push(effectPlugin) : (compilerPlugins[effectPluginIndex] = effectPlugin);
-for (const optionName of [
-  "strict",
-  "skipLibCheck",
-  "noFallthroughCasesInSwitch",
-  "noUncheckedIndexedAccess",
-  "noImplicitOverride",
-  "erasableSyntaxOnly",
-  "noUnusedLocals",
-  "noUnusedParameters",
-  "noPropertyAccessFromIndexSignature",
-  "plugins",
-]) delete compilerOptions[optionName];
-tsconfig.compilerOptions = {
-  ...compilerOptions,
-  strict: true,
-  skipLibCheck: true,
-  noFallthroughCasesInSwitch: true,
-  noUncheckedIndexedAccess: true,
-  noImplicitOverride: true,
+if (effectPluginIndex < 0) compilerPlugins.push(effectPlugin);
+else compilerPlugins[effectPluginIndex] = effectPlugin;
+const managedCompilerOptions = {
   erasableSyntaxOnly: true,
   noUnusedLocals: true,
   noUnusedParameters: true,
@@ -203,8 +300,16 @@ tsconfig.compilerOptions = {
 if (tsconfig.exclude === undefined) tsconfig.exclude = [`${referenceRepositoriesDirectory}/**/*`];
 else if (!Array.isArray(tsconfig.exclude)) fail("tsconfig exclude must be an array");
 else if (!tsconfig.exclude.includes(`${referenceRepositoriesDirectory}/**/*`)) tsconfig.exclude.push(`${referenceRepositoriesDirectory}/**/*`);
-// 🟠 Write strict compiler options and the Effect plugin to tsconfig.json.
-await writeJson(tsconfigPath, tsconfig);
+let tsconfigText = existsSync(tsconfigPath) ? await Bun.file(tsconfigPath).text() : "{}\n";
+tsconfigText = editJsoncProperties(tsconfigText, { entries: [["$schema", effectTsgoSchemaUrl]] });
+const compilerOptionsProperty = jsoncObjectProperties(tsconfigText).properties.find((property) => property.key === "compilerOptions");
+if (!compilerOptionsProperty) tsconfigText = editJsoncProperties(tsconfigText, { entries: [["compilerOptions", managedCompilerOptions]] });
+else tsconfigText = editJsoncProperties(tsconfigText, { path: ["compilerOptions"], entries: Object.entries(managedCompilerOptions) });
+tsconfigText = editJsoncProperties(tsconfigText, { entries: [["exclude", tsconfig.exclude]] });
+// 🟠 Write only managed compiler settings, retaining Bun's comments and spacing.
+await Bun.write(tsconfigPath, tsconfigText);
+
+/* Project files and editor configuration */
 
 // Add a compiler input only when the repository has no source files.
 const extensions = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
@@ -254,12 +359,17 @@ await writeJson(vscodePath, vscodeSettings);
 await ensureSubmodule("https://github.com/Effect-TS/effect-smol.git", `${referenceRepositoriesDirectory}/effect-smol`);
 await ensureSubmodule("https://github.com/mattpocock/skills.git", `${referenceRepositoriesDirectory}/mattpocock-skills`);
 
+/* Finalization and validation */
+
 // 🔴 Synchronize installed dependencies without running lifecycle scripts.
 await $`bun install --ignore-scripts`.quiet();
 // 🔴 Patch the native TypeScript compiler with the Effect language service.
 await $`bun prepare`.quiet();
 // 🔴 Format and check the completed project.
 await $`bun check`.quiet();
+const completedTsconfig = await readJsonObject(tsconfigPath);
+const completedEffectPlugin = completedTsconfig.compilerOptions?.plugins?.find((plugin) => plugin?.name === effectPlugin.name);
+if (JSON.stringify(completedEffectPlugin) !== JSON.stringify(effectPlugin)) fail("tsconfig Effect language-service plugin was not updated");
 // 🔴 Typecheck the completed project.
 await $`bun typecheck`.quiet();
 console.log("Effect v4 project bootstrap complete.");
